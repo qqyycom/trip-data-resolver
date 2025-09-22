@@ -2,6 +2,13 @@
 
 import { TrajectoryStats } from "@/types";
 import { formatFileSize } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Loader2 } from "lucide-react";
 
 interface ControlPanelProps {
   tolerance: number;
@@ -34,38 +41,36 @@ export default function ControlPanel({
     { value: 0.01, label: "0.01° (约1000m)(粗略)" },
   ];
 
-  return (
-    <div className="bg-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-xl font-bold mb-6">轨迹控制面板</h2>
+  const currentIndex = toleranceValues.findIndex((t) => t.value === tolerance);
 
-      <div className="space-y-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            抽稀容差参数
-          </label>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>轨迹控制面板</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
+          <Label className="text-sm font-medium">抽稀容差参数</Label>
           <div className="space-y-3">
-            <input
-              type="range"
-              min="0"
-              max={toleranceValues.length - 1}
-              step="1"
-              value={toleranceValues.findIndex((t) => t.value === tolerance)}
-              onChange={(e) => {
-                const index = parseInt(e.target.value);
-                onToleranceChange(toleranceValues[index].value);
+            <Slider
+              value={[currentIndex]}
+              onValueChange={(value) => {
+                onToleranceChange(toleranceValues[value[0]].value);
               }}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
+              max={toleranceValues.length - 1}
+              step={1}
               disabled={isProcessing}
+              className="w-full"
             />
-            <div className="text-sm text-gray-600 text-center">
+            <div className="text-sm text-muted-foreground text-center">
               当前值: {tolerance}°
             </div>
-            <div className="grid grid-cols-1 gap-1 text-xs text-gray-500">
-              {toleranceValues.map((item, index) => (
+            <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+              {toleranceValues.map((item) => (
                 <div
                   key={item.value}
                   className={`text-center ${
-                    item.value === tolerance ? "font-bold text-blue-600" : ""
+                    item.value === tolerance ? "font-bold text-primary" : ""
                   }`}
                 >
                   {item.label}
@@ -75,106 +80,90 @@ export default function ControlPanel({
           </div>
         </div>
 
-        <div className="border-t pt-6">
-          <label className="block text-sm font-medium text-gray-700 mb-3">
-            轨迹显示控制
-          </label>
-          <div className="space-y-3">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
+        <div className="space-y-4">
+          <Label className="text-sm font-medium">轨迹显示控制</Label>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-1 bg-blue-500 rounded"></div>
+                <Label htmlFor="show-original" className="text-sm font-normal">
+                  显示原始轨迹
+                </Label>
+              </div>
+              <Switch
+                id="show-original"
                 checked={showOriginal}
-                onChange={(e) => onShowOriginalChange(e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                onCheckedChange={onShowOriginalChange}
               />
-              <span className="ml-2 text-sm text-gray-700 flex items-center">
-                <div className="w-4 h-1 bg-blue-500 mr-2"></div>
-                显示原始轨迹
-              </span>
-            </label>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-1 bg-red-500 rounded"></div>
+                <Label htmlFor="show-simplified" className="text-sm font-normal">
+                  显示抽稀轨迹
+                </Label>
+              </div>
+              <Switch
+                id="show-simplified"
                 checked={showSimplified}
-                onChange={(e) => onShowSimplifiedChange(e.target.checked)}
-                className="rounded border-gray-300 text-red-600 shadow-sm focus:border-red-300 focus:ring focus:ring-red-200 focus:ring-opacity-50"
+                onCheckedChange={onShowSimplifiedChange}
               />
-              <span className="ml-2 text-sm text-gray-700 flex items-center">
-                <div className="w-4 h-1 bg-red-500 mr-2"></div>
-                显示抽稀轨迹
-              </span>
-            </label>
+            </div>
           </div>
         </div>
 
         {stats && (
-          <div className="border-t pt-6">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">轨迹统计</h3>
+          <div className="space-y-4">
+            <Label className="text-sm font-medium">轨迹统计</Label>
             <div className="grid grid-cols-1 gap-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">文件大小:</span>
-                <span className="font-medium">{formatFileSize(stats.fileSize)}</span>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">文件大小:</span>
+                <Badge variant="secondary">{formatFileSize(stats.fileSize)}</Badge>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">原始点数:</span>
-                <span className="font-medium">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">原始点数:</span>
+                <Badge variant="outline">
                   {stats.originalCount.toLocaleString()}
-                </span>
+                </Badge>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">抽稀后点数:</span>
-                <span className="font-medium">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">抽稀后点数:</span>
+                <Badge variant="outline">
                   {stats.simplifiedCount.toLocaleString()}
-                </span>
+                </Badge>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">压缩比:</span>
-                <span className="font-medium text-green-600">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">压缩比:</span>
+                <Badge variant="default" className="bg-green-600">
                   {stats.compressionRatio}%
-                </span>
+                </Badge>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">减少点数:</span>
-                <span className="font-medium">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">减少点数:</span>
+                <Badge variant="outline">
                   {(
                     stats.originalCount - stats.simplifiedCount
                   ).toLocaleString()}
-                </span>
+                </Badge>
+              </div>
+              <div className="mt-2">
+                <div className="flex justify-between text-xs mb-1">
+                  <span>压缩进度</span>
+                  <span>{stats.compressionRatio}%</span>
+                </div>
+                <Progress value={stats.compressionRatio} className="h-2" />
               </div>
             </div>
           </div>
         )}
 
         {isProcessing && (
-          <div className="border-t pt-6">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-3"></div>
-              <span className="text-sm text-gray-600">正在处理轨迹数据...</span>
-            </div>
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm text-muted-foreground">正在处理轨迹数据...</span>
           </div>
         )}
-      </div>
-
-      <style jsx>{`
-        .slider::-webkit-slider-thumb {
-          appearance: none;
-          height: 20px;
-          width: 20px;
-          border-radius: 50%;
-          background: #3b82f6;
-          cursor: pointer;
-          box-shadow: 0 0 2px 0 #555;
-        }
-        .slider::-moz-range-thumb {
-          height: 20px;
-          width: 20px;
-          border-radius: 50%;
-          background: #3b82f6;
-          cursor: pointer;
-          border: none;
-          box-shadow: 0 0 2px 0 #555;
-        }
-      `}</style>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
