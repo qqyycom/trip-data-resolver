@@ -8,16 +8,20 @@ import { GPSDataPoint } from "@/types";
 interface MapboxMapProps {
   gpsData: GPSDataPoint[];
   originalTrajectory: [number, number][];
+  timeFilteredTrajectory: [number, number][];
   simplifiedTrajectory: [number, number][];
   showOriginal: boolean;
+  showTimeFiltered: boolean;
   showSimplified: boolean;
 }
 
 export default function MapboxMap({
   gpsData,
   originalTrajectory,
+  timeFilteredTrajectory,
   simplifiedTrajectory,
   showOriginal,
+  showTimeFiltered,
   showSimplified,
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -72,6 +76,7 @@ export default function MapboxMap({
     });
   }, [gpsData, mapLoaded]);
 
+  // 原始轨迹 - 蓝色
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -111,6 +116,78 @@ export default function MapboxMap({
     }
   }, [originalTrajectory, mapLoaded, showOriginal]);
 
+  // 时间间隔抽稀轨迹 - 黄色
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    if (map.current.getSource("time-filtered-trajectory")) {
+      map.current.removeLayer("time-filtered-trajectory-line");
+      map.current.removeLayer("time-filtered-trajectory-points");
+      map.current.removeSource("time-filtered-trajectory");
+    }
+
+    if (timeFilteredTrajectory.length > 0) {
+      map.current.addSource("time-filtered-trajectory", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "LineString",
+                coordinates: timeFilteredTrajectory,
+              },
+            },
+            ...timeFilteredTrajectory.map((coord, index) => ({
+              type: "Feature" as const,
+              properties: { index },
+              geometry: {
+                type: "Point" as const,
+                coordinates: coord,
+              },
+            })),
+          ],
+        },
+      });
+
+      map.current.addLayer({
+        id: "time-filtered-trajectory-line",
+        type: "line",
+        source: "time-filtered-trajectory",
+        filter: ["==", "$type", "LineString"],
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+          visibility: showTimeFiltered ? "visible" : "none",
+        },
+        paint: {
+          "line-color": "#eab308",
+          "line-width": 4,
+          "line-opacity": 0.9,
+        },
+      });
+
+      map.current.addLayer({
+        id: "time-filtered-trajectory-points",
+        type: "circle",
+        source: "time-filtered-trajectory",
+        filter: ["==", "$type", "Point"],
+        layout: {
+          visibility: showTimeFiltered ? "visible" : "none",
+        },
+        paint: {
+          "circle-color": "#eab308",
+          "circle-radius": 4,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+    }
+  }, [timeFilteredTrajectory, mapLoaded, showTimeFiltered]);
+
+  // RDP 抽稀轨迹 - 红色
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -181,6 +258,7 @@ export default function MapboxMap({
     }
   }, [simplifiedTrajectory, mapLoaded, showSimplified]);
 
+  // 控制原始轨迹显示/隐藏
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -193,6 +271,28 @@ export default function MapboxMap({
     }
   }, [showOriginal, mapLoaded]);
 
+  // 控制时间抽稀轨迹显示/隐藏
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    if (map.current.getLayer("time-filtered-trajectory-line")) {
+      map.current.setLayoutProperty(
+        "time-filtered-trajectory-line",
+        "visibility",
+        showTimeFiltered ? "visible" : "none"
+      );
+    }
+
+    if (map.current.getLayer("time-filtered-trajectory-points")) {
+      map.current.setLayoutProperty(
+        "time-filtered-trajectory-points",
+        "visibility",
+        showTimeFiltered ? "visible" : "none"
+      );
+    }
+  }, [showTimeFiltered, mapLoaded]);
+
+  // 控制RDP抽稀轨迹显示/隐藏
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -228,15 +328,19 @@ export default function MapboxMap({
         </div>
       )}
 
-      <div className="absolute top-4 left-4 bg-white p-3 rounded-lg shadow-lg">
-        <div className="flex items-center space-x-4 text-sm">
+      <div className="absolute top-2 left-2 sm:top-4 sm:left-4 bg-white p-2 sm:p-3 rounded-lg shadow-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 text-xs sm:text-sm">
           <div className="flex items-center">
-            <div className="w-4 h-1 bg-blue-500 mr-2"></div>
+            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-blue-500 mr-1 sm:mr-2"></div>
             <span>原始轨迹</span>
           </div>
           <div className="flex items-center">
-            <div className="w-4 h-1 bg-red-500 mr-2"></div>
-            <span>抽稀轨迹</span>
+            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-yellow-500 mr-1 sm:mr-2"></div>
+            <span>时间抽稀</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-red-500 mr-1 sm:mr-2"></div>
+            <span>RDP抽稀</span>
           </div>
         </div>
       </div>

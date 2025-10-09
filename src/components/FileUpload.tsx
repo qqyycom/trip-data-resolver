@@ -5,8 +5,6 @@ import { parseGPSFile } from "@/lib/gpsParser";
 import { GPSDataPoint } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Upload, FileText, Loader2, AlertCircle } from "lucide-react";
 
 interface FileUploadProps {
@@ -110,19 +108,21 @@ export default function FileUpload({ onDataLoaded }: FileUploadProps) {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Input
+                  <input
                     type="file"
                     onChange={handleFileSelect}
                     className="hidden"
                     id="file-upload"
                     accept=".txt,.csv,.log,.map,.zip"
                   />
-                  <Label htmlFor="file-upload" asChild>
-                    <Button variant="default" className="cursor-pointer">
-                      <FileText className="w-4 h-4 mr-2" />
-                      选择文件
-                    </Button>
-                  </Label>
+                  <Button
+                    variant="default"
+                    className="cursor-pointer"
+                    onClick={() => document.getElementById('file-upload')?.click()}
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    选择文件
+                  </Button>
                 </div>
               </div>
             )}
