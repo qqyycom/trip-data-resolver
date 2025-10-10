@@ -22,6 +22,7 @@ export interface TrajectoryStats {
   originalCount: number;
   timeFilteredCount?: number; // 时间间隔抽稀后的点数
   rdpSimplifiedCount?: number; // RDP抽稀后的点数
+  mapMatchedCount?: number; // 地图匹配后的点数
   finalCount: number; // 最终点数（所有抽稀后）
   compressionRatio: number;
   fileSize: number; // 原始文件大小（字节）

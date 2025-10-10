@@ -56,7 +56,8 @@ export function calculateStats(
   finalTrajectory: TrajectoryPoint[],
   fileSize: number = 0,
   timeFilteredCount?: number,
-  rdpSimplifiedCount?: number
+  rdpSimplifiedCount?: number,
+  mapMatchedCount?: number
 ): TrajectoryStats {
   const originalCount = originalTrajectory.length
   const finalCount = finalTrajectory.length
@@ -66,6 +67,7 @@ export function calculateStats(
     originalCount,
     timeFilteredCount,
     rdpSimplifiedCount,
+    mapMatchedCount,
     finalCount,
     compressionRatio: Math.round(compressionRatio * 100) / 100,
     fileSize

@@ -18,12 +18,24 @@ interface ControlPanelProps {
   onTimeIntervalChange: (interval: number) => void;
   showTimeFiltered: boolean;
   onShowTimeFilteredChange: (show: boolean) => void;
+  showTimeFilteredPoints: boolean;
+  onShowTimeFilteredPointsChange: (show: boolean) => void;
 
   // RDP 抽稀
   enableRDP: boolean;
   onEnableRDPChange: (enabled: boolean) => void;
   tolerance: number;
   onToleranceChange: (tolerance: number) => void;
+  showSimplifiedPoints: boolean;
+  onShowSimplifiedPointsChange: (show: boolean) => void;
+
+  // 地图匹配
+  enableMapMatching: boolean;
+  onEnableMapMatchingChange: (enabled: boolean) => void;
+  showMapMatched: boolean;
+  onShowMapMatchedChange: (show: boolean) => void;
+  showMapMatchedPoints: boolean;
+  onShowMapMatchedPointsChange: (show: boolean) => void;
 
   // 轨迹显示
   showOriginal: boolean;
@@ -33,6 +45,7 @@ interface ControlPanelProps {
 
   stats: TrajectoryStats | null;
   isProcessing: boolean;
+  mapMatchingProgress?: { current: number; total: number } | null;
 }
 
 export default function ControlPanel({
@@ -42,16 +55,27 @@ export default function ControlPanel({
   onTimeIntervalChange,
   showTimeFiltered,
   onShowTimeFilteredChange,
+  showTimeFilteredPoints,
+  onShowTimeFilteredPointsChange,
   enableRDP,
   onEnableRDPChange,
   tolerance,
   onToleranceChange,
+  showSimplifiedPoints,
+  onShowSimplifiedPointsChange,
+  enableMapMatching,
+  onEnableMapMatchingChange,
+  showMapMatched,
+  onShowMapMatchedChange,
+  showMapMatchedPoints,
+  onShowMapMatchedPointsChange,
   showOriginal,
   onShowOriginalChange,
   showSimplified,
   onShowSimplifiedChange,
   stats,
   isProcessing,
+  mapMatchingProgress,
 }: ControlPanelProps) {
   const toleranceValues = [
     { value: 0.00001, label: "0.00001°(约1m)", shortLabel: "1m" },
@@ -83,7 +107,7 @@ export default function ControlPanel({
           </div>
 
           {enableTimeFilter && (
-            <div className="space-y-2 sm:space-y-3 pl-4 border-l-2 border-yellow-500">
+            <div className="space-y-2 sm:space-y-3 pl-4 border-l-2 border-purple-500">
               <Label className="text-sm">时间间隔 (秒)</Label>
               <Slider
                 value={[timeInterval]}
@@ -96,6 +120,17 @@ export default function ControlPanel({
               />
               <div className="text-sm text-muted-foreground text-center">
                 当前值: {timeInterval} 秒
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <Label htmlFor="show-time-filtered-points" className="text-sm font-normal">
+                  显示抽稀点
+                </Label>
+                <Switch
+                  id="show-time-filtered-points"
+                  checked={showTimeFilteredPoints}
+                  onCheckedChange={onShowTimeFilteredPointsChange}
+                />
               </div>
             </div>
           )}
@@ -147,6 +182,54 @@ export default function ControlPanel({
                 </span>
                 <span>粗略</span>
               </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <Label htmlFor="show-simplified-points" className="text-sm font-normal">
+                  显示抽稀点
+                </Label>
+                <Switch
+                  id="show-simplified-points"
+                  checked={showSimplifiedPoints}
+                  onCheckedChange={onShowSimplifiedPointsChange}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 地图匹配控制 */}
+        <div className="space-y-3 sm:space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">Snap to Road (地图匹配)</Label>
+            <Switch
+              id="enable-map-matching"
+              checked={enableMapMatching}
+              onCheckedChange={onEnableMapMatchingChange}
+            />
+          </div>
+
+          {enableMapMatching && (
+            <div className="space-y-2 sm:space-y-3 pl-4 border-l-2 border-green-500">
+              <div className="text-xs text-muted-foreground">
+                <p>使用 Mapbox Map Matching API</p>
+                <p>将轨迹点吸附到道路网络</p>
+                {mapMatchingProgress && (
+                  <p className="mt-2 text-primary font-medium">
+                    处理进度: {mapMatchingProgress.current}/{mapMatchingProgress.total}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <Label htmlFor="show-map-matched-points" className="text-sm font-normal">
+                  显示匹配点
+                </Label>
+                <Switch
+                  id="show-map-matched-points"
+                  checked={showMapMatchedPoints}
+                  onCheckedChange={onShowMapMatchedPointsChange}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -172,7 +255,7 @@ export default function ControlPanel({
             {enableTimeFilter && (
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <div className="w-4 h-1 bg-yellow-500 rounded"></div>
+                  <div className="w-4 h-1 bg-purple-500 rounded"></div>
                   <Label htmlFor="show-time-filtered" className="text-sm font-normal">
                     显示时间抽稀轨迹
                   </Label>
@@ -200,6 +283,22 @@ export default function ControlPanel({
                 />
               </div>
             )}
+
+            {enableMapMatching && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-1 bg-green-500 rounded"></div>
+                  <Label htmlFor="show-map-matched" className="text-sm font-normal">
+                    显示地图匹配轨迹
+                  </Label>
+                </div>
+                <Switch
+                  id="show-map-matched"
+                  checked={showMapMatched}
+                  onCheckedChange={onShowMapMatchedChange}
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -221,7 +320,7 @@ export default function ControlPanel({
               {stats.timeFilteredCount !== undefined && (
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">时间抽稀后:</span>
-                  <Badge variant="outline" className="border-yellow-500">
+                  <Badge variant="outline" className="border-purple-500">
                     {stats.timeFilteredCount.toLocaleString()}
                   </Badge>
                 </div>
@@ -231,6 +330,14 @@ export default function ControlPanel({
                   <span className="text-muted-foreground">RDP抽稀后:</span>
                   <Badge variant="outline" className="border-red-500">
                     {stats.rdpSimplifiedCount.toLocaleString()}
+                  </Badge>
+                </div>
+              )}
+              {stats.mapMatchedCount !== undefined && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">地图匹配后:</span>
+                  <Badge variant="outline" className="border-green-500">
+                    {stats.mapMatchedCount.toLocaleString()}
                   </Badge>
                 </div>
               )}

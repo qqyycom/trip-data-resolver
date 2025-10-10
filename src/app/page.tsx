@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import FileUpload from "@/components/FileUpload";
 import MapboxMap from "@/components/MapboxMap";
 import ControlPanel from "@/components/ControlPanel";
@@ -12,6 +12,7 @@ import {
   calculateStats,
   trajectoryToCoordinates,
 } from "@/lib/simplification";
+import { mapMatchTrajectory } from "@/lib/mapMatching";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
@@ -24,10 +25,19 @@ export default function Home() {
   const [enableTimeFilter, setEnableTimeFilter] = useState(false);
   const [timeInterval, setTimeInterval] = useState(5);
   const [showTimeFiltered, setShowTimeFiltered] = useState(true);
+  const [showTimeFilteredPoints, setShowTimeFilteredPoints] = useState(true);
 
   // RDP 抽稀控制
   const [enableRDP, setEnableRDP] = useState(true);
   const [tolerance, setTolerance] = useState(0.0001);
+  const [showSimplifiedPoints, setShowSimplifiedPoints] = useState(true);
+
+  // 地图匹配控制
+  const [enableMapMatching, setEnableMapMatching] = useState(false);
+  const [showMapMatched, setShowMapMatched] = useState(true);
+  const [showMapMatchedPoints, setShowMapMatchedPoints] = useState(true);
+  const [mapMatchedTrajectory, setMapMatchedTrajectory] = useState<TrajectoryPoint[]>([]);
+  const [mapMatchingProgress, setMapMatchingProgress] = useState<{ current: number; total: number } | null>(null);
 
   // 轨迹显示控制
   const [showOriginal, setShowOriginal] = useState(true);
@@ -44,14 +54,14 @@ export default function Home() {
   const {
     originalTrajectory,
     timeFilteredTrajectory,
-    finalTrajectory,
-    stats
+    rdpTrajectory,
+    stats: baseStats
   } = useMemo(() => {
     if (gpsData.length === 0) {
       return {
         originalTrajectory: [],
         timeFilteredTrajectory: [],
-        finalTrajectory: [],
+        rdpTrajectory: [],
         stats: null,
       };
     }
@@ -72,31 +82,111 @@ export default function Home() {
       }
 
       // 3. RDP 抽稀（如果启用，基于时间抽稀后的数据）
-      let finalTraj = timeFilteredTraj;
+      let rdpTraj = timeFilteredTraj;
 
       if (enableRDP) {
-        finalTraj = simplifyTrajectory(timeFilteredTraj, tolerance, true);
+        rdpTraj = simplifyTrajectory(timeFilteredTraj, tolerance, true);
       }
 
-      // 4. 计算统计信息
+      // 4. 计算统计信息 (不包括地图匹配)
       const calculatedStats = calculateStats(
         original,
-        finalTraj,
+        rdpTraj,
         fileSize,
         enableTimeFilter ? timeFilteredTraj.length : undefined,
-        enableRDP ? finalTraj.length : undefined
+        enableRDP ? rdpTraj.length : undefined
       );
 
       return {
         originalTrajectory: original,
         timeFilteredTrajectory: timeFilteredTraj,
-        finalTrajectory: finalTraj,
+        rdpTrajectory: rdpTraj,
         stats: calculatedStats,
       };
     } finally {
       setIsProcessing(false);
     }
   }, [gpsData, enableTimeFilter, timeInterval, enableRDP, tolerance, fileSize]);
+
+  // 地图匹配处理（异步）
+  useEffect(() => {
+    if (!enableMapMatching || rdpTrajectory.length === 0) {
+      setMapMatchedTrajectory([]);
+      setMapMatchingProgress(null);
+      return;
+    }
+
+    const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    if (!accessToken) {
+      console.error('Mapbox access token is required for map matching');
+      setMapMatchedTrajectory([]);
+      return;
+    }
+
+    let cancelled = false;
+    setIsProcessing(true);
+
+    mapMatchTrajectory(
+      rdpTrajectory,
+      accessToken,
+      'mapbox/driving',
+      (current, total) => {
+        if (!cancelled) {
+          setMapMatchingProgress({ current, total });
+        }
+      }
+    )
+      .then((matched) => {
+        if (!cancelled) {
+          setMapMatchedTrajectory(matched);
+          setMapMatchingProgress(null);
+        }
+      })
+      .catch((error) => {
+        console.error('Map matching failed:', error);
+        if (!cancelled) {
+          setMapMatchedTrajectory(rdpTrajectory); // 回退到RDP结果
+          setMapMatchingProgress(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsProcessing(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rdpTrajectory, enableMapMatching]);
+
+  // 最终统计信息（包括地图匹配）
+  const stats = useMemo(() => {
+    if (!baseStats) return null;
+
+    const finalTraj = enableMapMatching && mapMatchedTrajectory.length > 0
+      ? mapMatchedTrajectory
+      : rdpTrajectory;
+
+    return calculateStats(
+      originalTrajectory,
+      finalTraj,
+      fileSize,
+      enableTimeFilter ? timeFilteredTrajectory.length : undefined,
+      enableRDP ? rdpTrajectory.length : undefined,
+      enableMapMatching && mapMatchedTrajectory.length > 0 ? mapMatchedTrajectory.length : undefined
+    );
+  }, [
+    baseStats,
+    originalTrajectory,
+    rdpTrajectory,
+    mapMatchedTrajectory,
+    enableMapMatching,
+    enableTimeFilter,
+    timeFilteredTrajectory,
+    enableRDP,
+    fileSize
+  ]);
 
   const originalCoordinates = useMemo(
     () => trajectoryToCoordinates(originalTrajectory),
@@ -108,9 +198,14 @@ export default function Home() {
     [timeFilteredTrajectory]
   );
 
-  const finalCoordinates = useMemo(
-    () => trajectoryToCoordinates(finalTrajectory),
-    [finalTrajectory]
+  const rdpCoordinates = useMemo(
+    () => trajectoryToCoordinates(rdpTrajectory),
+    [rdpTrajectory]
+  );
+
+  const mapMatchedCoordinates = useMemo(
+    () => trajectoryToCoordinates(mapMatchedTrajectory),
+    [mapMatchedTrajectory]
   );
 
   const hasData = gpsData.length > 0;
@@ -124,7 +219,7 @@ export default function Home() {
               GPS 轨迹抽稀工具
             </h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              支持时间间隔抽稀和 RDP 算法抽稀的 GPS 轨迹可视化工具
+              支持时间间隔抽稀、RDP 算法抽稀和地图匹配的 GPS 轨迹可视化工具
             </p>
           </div>
         </div>
@@ -145,16 +240,27 @@ export default function Home() {
                 onTimeIntervalChange={setTimeInterval}
                 showTimeFiltered={showTimeFiltered}
                 onShowTimeFilteredChange={setShowTimeFiltered}
+                showTimeFilteredPoints={showTimeFilteredPoints}
+                onShowTimeFilteredPointsChange={setShowTimeFilteredPoints}
                 enableRDP={enableRDP}
                 onEnableRDPChange={setEnableRDP}
                 tolerance={tolerance}
                 onToleranceChange={setTolerance}
+                showSimplifiedPoints={showSimplifiedPoints}
+                onShowSimplifiedPointsChange={setShowSimplifiedPoints}
+                enableMapMatching={enableMapMatching}
+                onEnableMapMatchingChange={setEnableMapMatching}
+                showMapMatched={showMapMatched}
+                onShowMapMatchedChange={setShowMapMatched}
+                showMapMatchedPoints={showMapMatchedPoints}
+                onShowMapMatchedPointsChange={setShowMapMatchedPoints}
                 showOriginal={showOriginal}
                 onShowOriginalChange={setShowOriginal}
                 showSimplified={showSimplified}
                 onShowSimplifiedChange={setShowSimplified}
                 stats={stats}
                 isProcessing={isProcessing}
+                mapMatchingProgress={mapMatchingProgress}
               />
 
               <Card>
@@ -164,6 +270,7 @@ export default function Home() {
                     onClick={() => {
                       setGpsData([]);
                       setFileSize(0);
+                      setMapMatchedTrajectory([]);
                     }}
                     variant="outline"
                     className="w-full"
@@ -182,10 +289,15 @@ export default function Home() {
                     gpsData={gpsData}
                     originalTrajectory={originalCoordinates}
                     timeFilteredTrajectory={timeFilteredCoordinates}
-                    simplifiedTrajectory={finalCoordinates}
+                    simplifiedTrajectory={rdpCoordinates}
+                    mapMatchedTrajectory={mapMatchedCoordinates}
                     showOriginal={showOriginal}
                     showTimeFiltered={showTimeFiltered && enableTimeFilter}
                     showSimplified={showSimplified && enableRDP}
+                    showMapMatched={showMapMatched && enableMapMatching}
+                    showTimeFilteredPoints={showTimeFilteredPoints}
+                    showSimplifiedPoints={showSimplifiedPoints}
+                    showMapMatchedPoints={showMapMatchedPoints}
                   />
                 </CardContent>
               </Card>

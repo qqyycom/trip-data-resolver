@@ -10,9 +10,14 @@ interface MapboxMapProps {
   originalTrajectory: [number, number][];
   timeFilteredTrajectory: [number, number][];
   simplifiedTrajectory: [number, number][];
+  mapMatchedTrajectory: [number, number][];
   showOriginal: boolean;
   showTimeFiltered: boolean;
   showSimplified: boolean;
+  showMapMatched: boolean;
+  showTimeFilteredPoints: boolean;
+  showSimplifiedPoints: boolean;
+  showMapMatchedPoints: boolean;
 }
 
 export default function MapboxMap({
@@ -20,9 +25,14 @@ export default function MapboxMap({
   originalTrajectory,
   timeFilteredTrajectory,
   simplifiedTrajectory,
+  mapMatchedTrajectory,
   showOriginal,
   showTimeFiltered,
   showSimplified,
+  showMapMatched,
+  showTimeFilteredPoints,
+  showSimplifiedPoints,
+  showMapMatchedPoints,
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -116,7 +126,7 @@ export default function MapboxMap({
     }
   }, [originalTrajectory, mapLoaded, showOriginal]);
 
-  // 时间间隔抽稀轨迹 - 黄色
+  // 时间间隔抽稀轨迹 - 紫色
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -163,7 +173,7 @@ export default function MapboxMap({
           visibility: showTimeFiltered ? "visible" : "none",
         },
         paint: {
-          "line-color": "#eab308",
+          "line-color": "#a855f7",
           "line-width": 4,
           "line-opacity": 0.9,
         },
@@ -175,17 +185,17 @@ export default function MapboxMap({
         source: "time-filtered-trajectory",
         filter: ["==", "$type", "Point"],
         layout: {
-          visibility: showTimeFiltered ? "visible" : "none",
+          visibility: showTimeFiltered && showTimeFilteredPoints ? "visible" : "none",
         },
         paint: {
-          "circle-color": "#eab308",
+          "circle-color": "#a855f7",
           "circle-radius": 4,
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 2,
         },
       });
     }
-  }, [timeFilteredTrajectory, mapLoaded, showTimeFiltered]);
+  }, [timeFilteredTrajectory, mapLoaded, showTimeFiltered, showTimeFilteredPoints]);
 
   // RDP 抽稀轨迹 - 红色
   useEffect(() => {
@@ -246,7 +256,7 @@ export default function MapboxMap({
         source: "simplified-trajectory",
         filter: ["==", "$type", "Point"],
         layout: {
-          visibility: showSimplified ? "visible" : "none",
+          visibility: showSimplified && showSimplifiedPoints ? "visible" : "none",
         },
         paint: {
           "circle-color": "#ef4444",
@@ -256,7 +266,78 @@ export default function MapboxMap({
         },
       });
     }
-  }, [simplifiedTrajectory, mapLoaded, showSimplified]);
+  }, [simplifiedTrajectory, mapLoaded, showSimplified, showSimplifiedPoints]);
+
+  // 地图匹配轨迹 - 绿色
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    if (map.current.getSource("map-matched-trajectory")) {
+      map.current.removeLayer("map-matched-trajectory-line");
+      map.current.removeLayer("map-matched-trajectory-points");
+      map.current.removeSource("map-matched-trajectory");
+    }
+
+    if (mapMatchedTrajectory.length > 0) {
+      map.current.addSource("map-matched-trajectory", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "LineString",
+                coordinates: mapMatchedTrajectory,
+              },
+            },
+            ...mapMatchedTrajectory.map((coord, index) => ({
+              type: "Feature" as const,
+              properties: { index },
+              geometry: {
+                type: "Point" as const,
+                coordinates: coord,
+              },
+            })),
+          ],
+        },
+      });
+
+      map.current.addLayer({
+        id: "map-matched-trajectory-line",
+        type: "line",
+        source: "map-matched-trajectory",
+        filter: ["==", "$type", "LineString"],
+        layout: {
+          "line-join": "round",
+          "line-cap": "round",
+          visibility: showMapMatched ? "visible" : "none",
+        },
+        paint: {
+          "line-color": "#22c55e",
+          "line-width": 4,
+          "line-opacity": 0.9,
+        },
+      });
+
+      map.current.addLayer({
+        id: "map-matched-trajectory-points",
+        type: "circle",
+        source: "map-matched-trajectory",
+        filter: ["==", "$type", "Point"],
+        layout: {
+          visibility: showMapMatched && showMapMatchedPoints ? "visible" : "none",
+        },
+        paint: {
+          "circle-color": "#22c55e",
+          "circle-radius": 4,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+    }
+  }, [mapMatchedTrajectory, mapLoaded, showMapMatched, showMapMatchedPoints]);
 
   // 控制原始轨迹显示/隐藏
   useEffect(() => {
@@ -287,10 +368,10 @@ export default function MapboxMap({
       map.current.setLayoutProperty(
         "time-filtered-trajectory-points",
         "visibility",
-        showTimeFiltered ? "visible" : "none"
+        showTimeFiltered && showTimeFilteredPoints ? "visible" : "none"
       );
     }
-  }, [showTimeFiltered, mapLoaded]);
+  }, [showTimeFiltered, showTimeFilteredPoints, mapLoaded]);
 
   // 控制RDP抽稀轨迹显示/隐藏
   useEffect(() => {
@@ -308,10 +389,31 @@ export default function MapboxMap({
       map.current.setLayoutProperty(
         "simplified-trajectory-points",
         "visibility",
-        showSimplified ? "visible" : "none"
+        showSimplified && showSimplifiedPoints ? "visible" : "none"
       );
     }
-  }, [showSimplified, mapLoaded]);
+  }, [showSimplified, showSimplifiedPoints, mapLoaded]);
+
+  // 控制地图匹配轨迹显示/隐藏
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+
+    if (map.current.getLayer("map-matched-trajectory-line")) {
+      map.current.setLayoutProperty(
+        "map-matched-trajectory-line",
+        "visibility",
+        showMapMatched ? "visible" : "none"
+      );
+    }
+
+    if (map.current.getLayer("map-matched-trajectory-points")) {
+      map.current.setLayoutProperty(
+        "map-matched-trajectory-points",
+        "visibility",
+        showMapMatched && showMapMatchedPoints ? "visible" : "none"
+      );
+    }
+  }, [showMapMatched, showMapMatchedPoints, mapLoaded]);
 
   return (
     <div className="relative w-full h-full">
@@ -335,12 +437,16 @@ export default function MapboxMap({
             <span>原始轨迹</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-yellow-500 mr-1 sm:mr-2"></div>
+            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-purple-500 mr-1 sm:mr-2"></div>
             <span>时间抽稀</span>
           </div>
           <div className="flex items-center">
             <div className="w-3 h-1 sm:w-4 sm:h-1 bg-red-500 mr-1 sm:mr-2"></div>
             <span>RDP抽稀</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-1 sm:w-4 sm:h-1 bg-green-500 mr-1 sm:mr-2"></div>
+            <span>地图匹配</span>
           </div>
         </div>
       </div>
