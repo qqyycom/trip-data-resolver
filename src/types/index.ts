@@ -27,3 +27,31 @@ export interface TrajectoryStats {
   compressionRatio: number;
   fileSize: number; // 原始文件大小（字节）
 }
+
+export type TripStatus = "FINISH" | "PART_FINISHED" | string;
+
+export interface TripPoint {
+  lat: number;
+  lng: number;
+  speed?: number;
+  // 某些数据集可能附带点级时间戳
+  timestamp?: number;
+}
+
+export interface TripRecord {
+  id: string;
+  device_id: string;
+  start_time: number;
+  end_time: number;
+  average_speed?: number;
+  mileage?: number;
+  max_speed?: number;
+  status: TripStatus;
+  deleted?: boolean;
+  points: TripPoint[];
+  simplified_points?: TripPoint[];
+  created_at?: number;
+  modified_at?: number;
+  last_position?: Record<string, unknown>;
+  [key: string]: unknown;
+}

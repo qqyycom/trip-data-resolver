@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import FileUpload from "@/components/FileUpload";
 import MapboxMap from "@/components/MapboxMap";
 import ControlPanel from "@/components/ControlPanel";
-import { GPSDataPoint, TrajectoryPoint, TrajectoryStats } from "@/types";
+import { GPSDataPoint, TrajectoryPoint } from "@/types";
 import {
   convertGPSToTrajectory,
   filterByTimeInterval,
@@ -138,7 +138,7 @@ export default function Home() {
     )
       .then((matched) => {
         if (!cancelled) {
-          setMapMatchedTrajectory(matched);
+          setMapMatchedTrajectory(matched.trajectory);
           setMapMatchingProgress(null);
         }
       })

@@ -37,6 +37,15 @@ npm install
 \`\`\`
 NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_access_token_here
 \`\`\`
+若需启用设备行程查询，还需配置 DynamoDB 访问凭证：
+\`\`\`
+AWS_REGION=ap-southeast-1
+TRIPS_TABLE_NAME=your_trip_table_name
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+# 可选，使用临时安全凭证时启用
+AWS_SESSION_TOKEN=optional_session_token
+\`\`\`
 
 4. 启动开发服务器
 \`\`\`bash

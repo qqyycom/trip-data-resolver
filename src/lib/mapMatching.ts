@@ -3,6 +3,7 @@ import { TrajectoryPoint } from "@/types";
 const MAPBOX_API_BASE = "https://api.mapbox.com/matching/v5";
 const MAX_COORDINATES_PER_REQUEST = 100;
 const CHUNK_OVERLAP = 5; // 重叠点数，确保轨迹连续性
+const MAP_MATCH_DEFAULT_CONFIDENCE = 0.5;
 
 interface MapMatchingResponse {
   code: string;
@@ -20,6 +21,22 @@ interface MapMatchingResponse {
     matchings_index: number;
     waypoint_index: number;
   } | null>;
+}
+
+export interface MapMatchingSegment {
+  type: "matched" | "raw";
+  coordinates: [number, number][];
+}
+
+export interface MapMatchedSegments {
+  matched: [number, number][][];
+  raw: [number, number][][];
+  ordered: MapMatchingSegment[];
+}
+
+export interface MapMatchingResult {
+  trajectory: TrajectoryPoint[];
+  segments: MapMatchedSegments;
 }
 
 /**
@@ -53,20 +70,53 @@ export function chunkCoordinates(
   return chunks;
 }
 
+function coordinatesToString(coordinates: [number, number][]) {
+  return coordinates.map(([lng, lat]) => `${lng},${lat}`).join(";");
+}
+
+function coordinatesEqual(
+  a: [number, number],
+  b: [number, number],
+  epsilon = 1e-9
+): boolean {
+  return Math.abs(a[0] - b[0]) <= epsilon && Math.abs(a[1] - b[1]) <= epsilon;
+}
+
+function dropLeadingDuplicates(
+  coordinates: [number, number][],
+  lastCoordinate: [number, number] | null
+): [number, number][] {
+  if (!lastCoordinate || coordinates.length === 0) {
+    return coordinates.slice();
+  }
+
+  let startIndex = 0;
+  while (
+    startIndex < coordinates.length &&
+    coordinatesEqual(coordinates[startIndex], lastCoordinate)
+  ) {
+    startIndex += 1;
+  }
+
+  return coordinates.slice(startIndex);
+}
+
 /**
  * 调用 Mapbox Map Matching API
  */
 async function callMapMatchingAPI(
   coordinates: [number, number][],
   accessToken: string,
-  profile: string = "mapbox/driving"
-): Promise<[number, number][]> {
-  // 将坐标转换为 Mapbox 格式 "lng,lat;lng,lat;..."
-  const coordinatesStr = coordinates
-    .map(([lng, lat]) => `${lng},${lat}`)
-    .join(";");
-
-  const url = `${MAPBOX_API_BASE}/${profile}/${coordinatesStr}?access_token=${accessToken}&geometries=geojson&overview=full`;
+  profile: string,
+  confidenceThreshold: number,
+  radius?: number
+): Promise<MapMatchingSegment[]> {
+  const coordinatesStr = coordinatesToString(coordinates);
+  const radiusParam =
+    typeof radius === "number" && radius > 0
+      ? `&radiuses=${coordinates.map(() => radius).join(";")}`
+      : "";
+  const url = `${MAPBOX_API_BASE}/${profile}/${coordinatesStr}?access_token=${accessToken}&geometries=geojson&overview=full${radiusParam}`;
 
   try {
     const response = await fetch(url);
@@ -83,21 +133,93 @@ async function callMapMatchingAPI(
       console.warn(
         "Map Matching returned no results, using original coordinates"
       );
-      return coordinates;
+      return [{ type: "raw", coordinates: coordinates.slice() }];
     }
 
-    // 返回第一个匹配结果的几何坐标
-    console.log(data);
-    return (
-      data.matchings
-        // .filter((m) => m.confidence > 0)
-        .map((m) => m.geometry.coordinates)
-        .flat()
-    );
+    const segments: Array<
+      | { type: "raw"; coords: [number, number][] }
+      | { type: "match"; matchIndex: number; coords: [number, number][] }
+    > = [];
+
+    let currentSegment:
+      | { type: "raw"; coords: [number, number][] }
+      | { type: "match"; matchIndex: number; coords: [number, number][] }
+      | null = null;
+
+    for (let index = 0; index < coordinates.length; index += 1) {
+      const tracepoint = data.tracepoints?.[index];
+      const matchIndex = tracepoint?.matchings_index;
+      const coordinate = coordinates[index];
+
+      if (matchIndex === undefined || matchIndex === null) {
+        if (currentSegment?.type === "raw") {
+          currentSegment.coords.push(coordinate);
+        } else {
+          if (currentSegment) {
+            segments.push(currentSegment);
+          }
+          currentSegment = { type: "raw", coords: [coordinate] };
+        }
+      } else if (
+        currentSegment?.type === "match" &&
+        currentSegment.matchIndex === matchIndex
+      ) {
+        currentSegment.coords.push(coordinate);
+      } else {
+        if (currentSegment) {
+          segments.push(currentSegment);
+        }
+        currentSegment = { type: "match", matchIndex, coords: [coordinate] };
+      }
+    }
+
+    if (currentSegment) {
+      segments.push(currentSegment);
+    }
+
+    const emittedMatchings = new Set<number>();
+    const chunkSegments: MapMatchingSegment[] = [];
+    let lastCoordinate: [number, number] | null = null;
+
+    const pushSegment = (
+      type: "matched" | "raw",
+      segmentCoordinates: [number, number][]
+    ) => {
+      const normalized = dropLeadingDuplicates(segmentCoordinates, lastCoordinate);
+      if (normalized.length === 0) {
+        return;
+      }
+
+      chunkSegments.push({ type, coordinates: normalized });
+      lastCoordinate = normalized[normalized.length - 1];
+    };
+
+    for (const segment of segments) {
+      if (segment.type === "raw") {
+        pushSegment("raw", segment.coords);
+        continue;
+      }
+
+      const matching = data.matchings[segment.matchIndex];
+      const confidence = matching?.confidence ?? 0;
+
+      if (
+        !matching ||
+        confidence < confidenceThreshold ||
+        emittedMatchings.has(segment.matchIndex)
+      ) {
+        pushSegment("raw", segment.coords);
+        continue;
+      }
+
+      pushSegment("matched", matching.geometry.coordinates);
+      emittedMatchings.add(segment.matchIndex);
+    }
+
+    return chunkSegments;
   } catch (error) {
     console.error("Map Matching request failed:", error);
-    // 如果 API 调用失败，返回原始坐标
-    return coordinates;
+    return [{ type: "raw", coordinates: coordinates.slice() }];
   }
 }
 
@@ -108,49 +230,57 @@ export async function batchMapMatching(
   coordinates: [number, number][],
   accessToken: string,
   profile: string = "mapbox/driving",
-  onProgress?: (current: number, total: number) => void
-): Promise<[number, number][]> {
+  onProgress?: (current: number, total: number) => void,
+  confidenceThreshold: number = MAP_MATCH_DEFAULT_CONFIDENCE,
+  radius?: number
+): Promise<MapMatchingSegment[]> {
   if (coordinates.length === 0) {
     return [];
   }
 
-  // 将坐标分块
   const chunks = chunkCoordinates(coordinates);
 
   if (chunks.length === 1) {
-    // 只有一块，直接调用
     onProgress?.(1, 1);
-    return await callMapMatchingAPI(chunks[0], accessToken, profile);
+    return await callMapMatchingAPI(
+      chunks[0],
+      accessToken,
+      profile,
+      confidenceThreshold,
+      radius
+    );
   }
 
-  // 多块，逐个处理并合并结果
-  const results: [number, number][] = [];
+  const aggregatedSegments: MapMatchingSegment[] = [];
+  let lastCoordinate: [number, number] | null = null;
 
   for (let i = 0; i < chunks.length; i++) {
     onProgress?.(i + 1, chunks.length);
 
-    const matchedCoords = await callMapMatchingAPI(
+    const chunkSegments = await callMapMatchingAPI(
       chunks[i],
       accessToken,
-      profile
+      profile,
+      confidenceThreshold,
+      radius
     );
 
-    if (i === 0) {
-      // 第一块，添加所有坐标
-      results.push(...matchedCoords);
-    } else {
-      // 后续块，跳过重叠部分的前几个点以避免重复
-      const skipCount = Math.min(CHUNK_OVERLAP, matchedCoords.length);
-      results.push(...matchedCoords.slice(skipCount));
+    for (const segment of chunkSegments) {
+      const normalized = dropLeadingDuplicates(segment.coordinates, lastCoordinate);
+      if (normalized.length === 0) {
+        continue;
+      }
+
+      aggregatedSegments.push({ type: segment.type, coordinates: normalized });
+      lastCoordinate = normalized[normalized.length - 1];
     }
 
-    // 添加延迟以避免超过速率限制（300 请求/分钟 = 200ms/请求）
     if (i < chunks.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
 
-  return results;
+  return aggregatedSegments;
 }
 
 /**
@@ -160,26 +290,77 @@ export async function mapMatchTrajectory(
   trajectory: TrajectoryPoint[],
   accessToken: string,
   profile: string = "mapbox/driving",
-  onProgress?: (current: number, total: number) => void
-): Promise<TrajectoryPoint[]> {
+  onProgress?: (current: number, total: number) => void,
+  confidenceThreshold: number = MAP_MATCH_DEFAULT_CONFIDENCE,
+  radius?: number
+): Promise<MapMatchingResult> {
   if (trajectory.length === 0) {
-    return [];
+    return {
+      trajectory: [],
+      segments: { matched: [], raw: [], ordered: [] },
+    };
   }
 
-  // 转换为坐标数组
   const coordinates: [number, number][] = trajectory.map((point) => [
     point.x,
     point.y,
   ]);
 
-  // 调用分批地图匹配
-  const matchedCoordinates = await batchMapMatching(
+  const segments = await batchMapMatching(
     coordinates,
     accessToken,
     profile,
-    onProgress
+    onProgress,
+    confidenceThreshold,
+    radius
   );
 
-  // 转换回轨迹点
-  return matchedCoordinates.map(([x, y]) => ({ x, y }));
+  if (segments.length === 0) {
+    return {
+      trajectory: coordinates.map(([x, y]) => ({ x, y })),
+      segments: { matched: [], raw: [], ordered: [] },
+    };
+  }
+
+  const matchedSegments: [number, number][][] = [];
+  const rawSegments: [number, number][][] = [];
+  const orderedSegments: MapMatchingSegment[] = [];
+  const combined: [number, number][] = [];
+  let lastCoordinate: [number, number] | null = null;
+
+  for (const segment of segments) {
+    let coords = segment.coordinates;
+    if (lastCoordinate) {
+      coords = dropLeadingDuplicates(coords, lastCoordinate);
+    } else {
+      coords = coords.slice();
+    }
+
+    if (coords.length === 0) {
+      continue;
+    }
+
+    if (segment.type === "matched") {
+      matchedSegments.push(coords);
+    } else {
+      rawSegments.push(coords);
+    }
+
+    orderedSegments.push({
+      type: segment.type,
+      coordinates: coords,
+    });
+
+    combined.push(...coords);
+    lastCoordinate = coords[coords.length - 1];
+  }
+
+  return {
+    trajectory: combined.map(([x, y]) => ({ x, y })),
+    segments: {
+      matched: matchedSegments,
+      raw: rawSegments,
+      ordered: orderedSegments,
+    },
+  };
 }
