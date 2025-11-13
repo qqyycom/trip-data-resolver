@@ -16,6 +16,10 @@ export interface GPSDataPoint {
 export interface TrajectoryPoint {
   x: number;
   y: number;
+  speed?: number;
+  direction?: number;
+  loctime?: number;
+  timestamp?: number;
 }
 
 export interface TrajectoryStats {
@@ -34,6 +38,8 @@ export interface TripPoint {
   lat: number;
   lng: number;
   speed?: number;
+  direction?: number;
+  loctime?: number;
   // 某些数据集可能附带点级时间戳
   timestamp?: number;
 }

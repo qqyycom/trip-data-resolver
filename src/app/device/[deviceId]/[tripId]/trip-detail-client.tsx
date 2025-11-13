@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { TripRecord } from "@/types";
+import { TripRecord, TrajectoryPoint } from "@/types";
 import {
   simplifyTrajectory,
   calculateStats,
@@ -35,19 +35,38 @@ const toleranceOptions = [
   { value: 0.005, label: "0.005° · ≈500 米" },
 ];
 
-function projectToTrajectory(points: TripRecord["points"]) {
-  return (points ?? [])
-    .map((point) => {
-      const lng = Number((point as { lng?: number | string }).lng)
-      const lat = Number((point as { lat?: number | string }).lat)
+function projectToTrajectory(points: TripRecord["points"]): TrajectoryPoint[] {
+  const trajectory: TrajectoryPoint[] = []
 
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
-        return null
-      }
+  for (const point of points ?? []) {
+    const lng = Number((point as { lng?: number | string }).lng)
+    const lat = Number((point as { lat?: number | string }).lat)
 
-      return { x: lng, y: lat }
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      continue
+    }
+
+    const rawSpeed = (point as { speed?: number | string }).speed
+    const rawDirection = (point as { direction?: number | string }).direction
+    const rawLoctime = (point as { loctime?: number | string }).loctime
+    const rawTimestamp = (point as { timestamp?: number | string }).timestamp
+
+    const speed = rawSpeed === undefined ? undefined : Number(rawSpeed)
+    const direction = rawDirection === undefined ? undefined : Number(rawDirection)
+    const loctime = rawLoctime === undefined ? undefined : Number(rawLoctime)
+    const timestamp = rawTimestamp === undefined ? undefined : Number(rawTimestamp)
+
+    trajectory.push({
+      x: lng,
+      y: lat,
+      speed: Number.isFinite(speed) ? speed : undefined,
+      direction: Number.isFinite(direction) ? direction : undefined,
+      loctime: Number.isFinite(loctime) ? loctime : undefined,
+      timestamp: Number.isFinite(timestamp) ? timestamp : undefined,
     })
-    .filter((item): item is { x: number; y: number } => item !== null)
+  }
+
+  return trajectory
 }
 
 export default function TripDetailClient({ deviceId, trip }: TripDetailClientProps) {

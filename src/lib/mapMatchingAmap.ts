@@ -47,6 +47,59 @@ function calculateBearing(
   return (bearing + 360) % 360;
 }
 
+function resolveSpeed(point?: TrajectoryPoint): number {
+  const value = point?.speed;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Number(value.toFixed(2));
+  }
+  return 0; // 高德允许 0 表示静止
+}
+
+function resolveDirection(point?: TrajectoryPoint, fallback?: number): number {
+  const value = point?.direction;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const normalized = ((value % 360) + 360) % 360;
+    return Number(normalized.toFixed(2));
+  }
+  return typeof fallback === "number" ? Number(fallback.toFixed(2)) : 0;
+}
+
+function normalizeTimestampMs(value?: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) {
+    return Math.trunc(value);
+  }
+  if (abs >= 1_000_000_000) {
+    return Math.trunc(value * 1000);
+  }
+  if (abs >= 1_000_000) {
+    return Math.trunc(value * 1000);
+  }
+  return Math.trunc(value);
+}
+
+function resolveTimestampSeconds(
+  point: TrajectoryPoint | undefined,
+  index: number,
+  baseTimeMs: number
+): { absoluteSeconds: number; deltaSeconds: number } {
+  const raw = normalizeTimestampMs(point?.loctime ?? point?.timestamp);
+  const currentMs =
+    raw !== undefined ? raw : baseTimeMs + index * 1000;
+  const baseSeconds = Math.trunc(baseTimeMs / 1000);
+  const deltaSeconds = Math.max(
+    0,
+    Math.trunc((currentMs - baseTimeMs) / 1000)
+  );
+
+  if (index === 0) {
+    return { absoluteSeconds: baseSeconds, deltaSeconds: 0 };
+  }
+
+  return { absoluteSeconds: baseSeconds, deltaSeconds };
+}
+
 export async function mapMatchTrajectoryAmap(
   trajectory: TrajectoryPoint[],
   apiKey: string,
@@ -62,7 +115,16 @@ export async function mapMatchTrajectoryAmap(
 
   const gcjPath = trajectory.map((point) => wgs84ToGcj02([point.x, point.y]));
 
-  const baseTimestamp = Date.now();
+  const firstTimestampPoint = trajectory.find(
+    (point) =>
+      typeof (point.loctime ?? point.timestamp) === "number" &&
+      Number.isFinite(point.loctime ?? point.timestamp)
+  );
+
+  const baseTimestampMs =
+    normalizeTimestampMs(
+      firstTimestampPoint?.loctime ?? firstTimestampPoint?.timestamp
+    ) ?? Date.now();
 
   onProgress?.(0, 1);
 
@@ -77,23 +139,24 @@ export async function mapMatchTrajectoryAmap(
         : ([lng, lat] as [number, number]);
     const bearing = calculateBearing(prev, next);
 
-    if (index === 0) {
-      return {
-        x: roundedLng,
-        y: roundedLat,
-        sp: Math.max(5, Math.min(30, Math.round(Math.random() * 20 + 10))),
-        ag: Number(bearing.toFixed(2)),
-        tm: baseTimestamp + index * 1000,
-      };
-    } else {
-      return {
-        x: roundedLng,
-        y: roundedLat,
-        sp: Math.max(5, Math.min(30, Math.round(Math.random() * 20 + 10))),
-        ag: Number(bearing.toFixed(2)),
-        tm: baseTimestamp + index * 1000,
-      };
-    }
+    const sourcePoint = trajectory[index];
+
+    const resolvedTime = resolveTimestampSeconds(
+      sourcePoint,
+      index,
+      baseTimestampMs
+    );
+
+    return {
+      x: roundedLng,
+      y: roundedLat,
+      sp: resolveSpeed(sourcePoint),
+      ag: resolveDirection(sourcePoint, bearing),
+      tm:
+        index === 0
+          ? resolvedTime.absoluteSeconds
+          : resolvedTime.deltaSeconds,
+    };
   });
 
   const url = `https://restapi.amap.com/v4/grasproad/driving?key=${apiKey}`;
