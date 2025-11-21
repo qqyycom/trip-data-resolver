@@ -7,13 +7,16 @@
  * 运行前请确保在 LocalStack 先创建好与线上一致的表结构（主键/GSI）。
  */
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require("node:fs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require("node:path");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const {
   DynamoDBClient,
   paginateScan,
   BatchWriteItemCommand,
-} = require("@aws-sdk/client-dynamodb");
+} = require("@aws-sdk/client-dynamodb"); // eslint-disable-line @typescript-eslint/no-require-imports
 
 // ------- 参数解析 -------
 function parseArgs(argv) {

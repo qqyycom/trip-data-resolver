@@ -2,7 +2,7 @@ import { TrajectoryPoint } from "@/types";
 
 const MAPBOX_API_BASE = "https://api.mapbox.com/matching/v5";
 const MAX_COORDINATES_PER_REQUEST = 100;
-const CHUNK_OVERLAP = 5; // 重叠点数，确保轨迹连续性
+const CHUNK_OVERLAP = 3; // 重叠点数，确保轨迹连续性
 const MAP_MATCH_DEFAULT_CONFIDENCE = 0.5;
 
 interface MapMatchingResponse {
@@ -185,7 +185,10 @@ async function callMapMatchingAPI(
       type: "matched" | "raw",
       segmentCoordinates: [number, number][]
     ) => {
-      const normalized = dropLeadingDuplicates(segmentCoordinates, lastCoordinate);
+      const normalized = dropLeadingDuplicates(
+        segmentCoordinates,
+        lastCoordinate
+      );
       if (normalized.length === 0) {
         return;
       }
@@ -266,7 +269,10 @@ export async function batchMapMatching(
     );
 
     for (const segment of chunkSegments) {
-      const normalized = dropLeadingDuplicates(segment.coordinates, lastCoordinate);
+      const normalized = dropLeadingDuplicates(
+        segment.coordinates,
+        lastCoordinate
+      );
       if (normalized.length === 0) {
         continue;
       }

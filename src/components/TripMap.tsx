@@ -10,10 +10,13 @@ interface TripMapProps {
   originalPath: [number, number][];
   simplifiedPath?: [number, number][];
   mapMatchedPath?: [number, number][];
+  precomputedMapMatchedPath?: [number, number][];
   mapMatchedSegments?: MapMatchedSegments | null;
   showOriginal: boolean;
   showSimplified: boolean;
   showSimplifiedPoints: boolean;
+  showPrecomputedMapMatched?: boolean;
+  showPrecomputedMapMatchedPoints?: boolean;
   showMapMatched?: boolean;
   showMapMatchedPoints?: boolean;
 }
@@ -31,10 +34,13 @@ export default function TripMap({
   originalPath,
   simplifiedPath = [],
   mapMatchedPath = [],
+  precomputedMapMatchedPath = [],
   mapMatchedSegments = null,
   showOriginal,
   showSimplified,
   showSimplifiedPoints,
+  showPrecomputedMapMatched = true,
+  showPrecomputedMapMatchedPoints = false,
   showMapMatched = true,
   showMapMatchedPoints = false,
 }: TripMapProps) {
@@ -47,11 +53,14 @@ export default function TripMap({
     if (mapMatchedPath.length > 0) {
       return mapMatchedPath[mapMatchedPath.length - 1];
     }
+    if (precomputedMapMatchedPath.length > 0) {
+      return precomputedMapMatchedPath[precomputedMapMatchedPath.length - 1];
+    }
     if (simplifiedPath.length > 0) {
       return simplifiedPath[simplifiedPath.length - 1];
     }
     return originalPath[originalPath.length - 1];
-  }, [mapMatchedPath, originalPath, simplifiedPath]);
+  }, [mapMatchedPath, originalPath, precomputedMapMatchedPath, simplifiedPath]);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -68,7 +77,7 @@ export default function TripMap({
 
     const map = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: "mapbox://styles/mapbox/standard",
       center: initialCenter,
       zoom: 10,
     });
@@ -101,6 +110,9 @@ export default function TripMap({
     if (mapMatchedPath.length > 0) {
       mapMatchedPath.forEach((coord) => bounds.extend(coord));
     }
+    if (precomputedMapMatchedPath.length > 0) {
+      precomputedMapMatchedPath.forEach((coord) => bounds.extend(coord));
+    }
 
     if (!bounds.isEmpty()) {
       mapRef.current.fitBounds(bounds, { padding: 48, maxZoom: 16 });
@@ -110,7 +122,14 @@ export default function TripMap({
     if (target) {
       mapRef.current.setCenter(target);
     }
-  }, [finishPoint, mapLoaded, mapMatchedPath, originalPath, simplifiedPath]);
+  }, [
+    finishPoint,
+    mapLoaded,
+    mapMatchedPath,
+    originalPath,
+    precomputedMapMatchedPath,
+    simplifiedPath,
+  ]);
 
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
@@ -279,7 +298,8 @@ export default function TripMap({
         source: "trip-simplified",
         filter: ["==", "$type", "Point"],
         layout: {
-          visibility: showSimplified && showSimplifiedPoints ? "visible" : "none",
+          visibility:
+            showSimplified && showSimplifiedPoints ? "visible" : "none",
         },
         paint: {
           "circle-color": "#ef4444",
@@ -313,6 +333,132 @@ export default function TripMap({
       cleanupLayers();
     };
   }, [mapLoaded, showSimplified, showSimplifiedPoints, simplifiedPath]);
+
+  useEffect(() => {
+    if (!mapRef.current || !mapLoaded) return;
+
+    const map = mapRef.current;
+
+    const hasRenderableStyle = () => {
+      try {
+        return Boolean(map.getStyle());
+      } catch {
+        return false;
+      }
+    };
+
+    const cleanup = () => {
+      if (!hasRenderableStyle()) return;
+      if (map.getLayer("trip-precomputed-line")) {
+        map.removeLayer("trip-precomputed-line");
+      }
+      if (map.getLayer("trip-precomputed-points")) {
+        map.removeLayer("trip-precomputed-points");
+      }
+      if (map.getSource("trip-precomputed")) {
+        map.removeSource("trip-precomputed");
+      }
+    };
+
+    const applyLayers = () => {
+      if (!hasRenderableStyle()) return;
+
+      cleanup();
+
+      if (precomputedMapMatchedPath.length <= 1) {
+        return;
+      }
+
+      map.addSource("trip-precomputed", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature" as const,
+              geometry: {
+                type: "LineString" as const,
+                coordinates: precomputedMapMatchedPath,
+              },
+              properties: {},
+            },
+            ...precomputedMapMatchedPath.map((coord, index) => ({
+              type: "Feature" as const,
+              geometry: {
+                type: "Point" as const,
+                coordinates: coord,
+              },
+              properties: { index },
+            })),
+          ],
+        },
+      });
+
+      map.addLayer({
+        id: "trip-precomputed-line",
+        type: "line",
+        source: "trip-precomputed",
+        filter: ["==", "$type", "LineString"],
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: showPrecomputedMapMatched ? "visible" : "none",
+        },
+        paint: {
+          "line-color": "#f97316",
+          "line-width": 3.5,
+          "line-opacity": 0.95,
+        },
+      });
+
+      map.addLayer({
+        id: "trip-precomputed-points",
+        type: "circle",
+        source: "trip-precomputed",
+        filter: ["==", "$type", "Point"],
+        layout: {
+          visibility:
+            showPrecomputedMapMatched && showPrecomputedMapMatchedPoints
+              ? "visible"
+              : "none",
+        },
+        paint: {
+          "circle-color": "#f97316",
+          "circle-radius": 4,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+    };
+
+    if (!map.isStyleLoaded()) {
+      const handleStyle = () => {
+        if (!map.isStyleLoaded() || !hasRenderableStyle()) {
+          return;
+        }
+        map.off("styledata", handleStyle);
+        applyLayers();
+      };
+
+      map.on("styledata", handleStyle);
+
+      return () => {
+        map.off("styledata", handleStyle);
+        cleanup();
+      };
+    }
+
+    applyLayers();
+
+    return () => {
+      cleanup();
+    };
+  }, [
+    mapLoaded,
+    precomputedMapMatchedPath,
+    showPrecomputedMapMatched,
+    showPrecomputedMapMatchedPoints,
+  ]);
 
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
@@ -362,7 +508,9 @@ export default function TripMap({
       const rawSegments = mapMatchedSegments?.raw ?? [];
       const orderedSegments = mapMatchedSegments?.ordered ?? [];
       const effectiveMatchedSegments =
-        matchedSegments.length === 0 && rawSegments.length === 0 && mapMatchedPath.length > 1
+        matchedSegments.length === 0 &&
+        rawSegments.length === 0 &&
+        mapMatchedPath.length > 1
           ? [mapMatchedPath]
           : matchedSegments;
 
@@ -382,12 +530,19 @@ export default function TripMap({
         }
       }
 
-      const hasMatchedSegments = effectiveMatchedSegments.some((segment) => segment.length > 1);
+      const hasMatchedSegments = effectiveMatchedSegments.some(
+        (segment) => segment.length > 1
+      );
       const hasRawSegments = rawSegments.some((segment) => segment.length > 1);
       const hasConnectorSegments = connectorSegments.length > 0;
       const hasPoints = mapMatchedPath.length > 0;
 
-      if (!hasMatchedSegments && !hasRawSegments && !hasConnectorSegments && !hasPoints) {
+      if (
+        !hasMatchedSegments &&
+        !hasRawSegments &&
+        !hasConnectorSegments &&
+        !hasPoints
+      ) {
         return;
       }
 
@@ -644,7 +799,8 @@ export default function TripMap({
             ["==", ["geometry-type"], "Point"],
           ],
           layout: {
-            visibility: showMapMatched && showMapMatchedPoints ? "visible" : "none",
+            visibility:
+              showMapMatched && showMapMatchedPoints ? "visible" : "none",
           },
           paint: {
             "circle-color": "#22c55e",
@@ -677,7 +833,13 @@ export default function TripMap({
     return () => {
       removeMapMatchedLayers();
     };
-  }, [mapLoaded, mapMatchedPath, mapMatchedSegments, showMapMatched, showMapMatchedPoints]);
+  }, [
+    mapLoaded,
+    mapMatchedPath,
+    mapMatchedSegments,
+    showMapMatched,
+    showMapMatchedPoints,
+  ]);
 
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
@@ -691,10 +853,18 @@ export default function TripMap({
     markerEl.className = "flex h-8 w-8 items-center justify-center text-2xl";
     markerEl.textContent = "🏁";
 
-    finishMarkerRef.current = new mapboxgl.Marker({ element: markerEl, anchor: "bottom" })
+    finishMarkerRef.current = new mapboxgl.Marker({
+      element: markerEl,
+      anchor: "bottom",
+    })
       .setLngLat(finishPoint)
       .addTo(mapRef.current);
   }, [finishPoint, mapLoaded]);
 
-  return <div ref={mapContainer} className="h-[480px] w-full rounded-lg overflow-hidden shadow" />;
+  return (
+    <div
+      ref={mapContainer}
+      className="h-[480px] w-full rounded-lg overflow-hidden shadow"
+    />
+  );
 }

@@ -56,6 +56,7 @@ export interface TripRecord {
   deleted?: boolean;
   points: TripPoint[];
   simplified_points?: TripPoint[];
+  map_matched_points?: TripPoint[];
   created_at?: number;
   modified_at?: number;
   last_position?: Record<string, unknown>;

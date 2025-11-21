@@ -30,9 +30,12 @@ interface TripMapAmapProps {
   originalPath: [number, number][];
   simplifiedPath?: [number, number][];
   mapMatchedPath?: [number, number][];
+  precomputedMapMatchedPath?: [number, number][];
   showOriginal: boolean;
   showSimplified: boolean;
   showSimplifiedPoints: boolean;
+  showPrecomputedMapMatched?: boolean;
+  showPrecomputedMapMatchedPoints?: boolean;
   showMapMatched?: boolean;
   showMapMatchedPoints?: boolean;
 }
@@ -83,9 +86,12 @@ export default function TripMapAmap({
   originalPath,
   simplifiedPath = [],
   mapMatchedPath = [],
+  precomputedMapMatchedPath = [],
   showOriginal,
   showSimplified,
   showSimplifiedPoints,
+  showPrecomputedMapMatched = true,
+  showPrecomputedMapMatchedPoints = false,
   showMapMatched = true,
   showMapMatchedPoints = false,
 }: TripMapAmapProps) {
@@ -95,6 +101,8 @@ export default function TripMapAmap({
     original?: AMapPolyline;
     simplified?: AMapPolyline;
     simplifiedPoints?: AMapCircleMarker[];
+    precomputed?: AMapPolyline;
+    precomputedPoints?: AMapCircleMarker[];
     matched?: AMapPolyline;
     matchedPoints?: AMapCircleMarker[];
   }>({});
@@ -104,11 +112,14 @@ export default function TripMapAmap({
     if (mapMatchedPath.length > 0) {
       return mapMatchedPath[mapMatchedPath.length - 1];
     }
+    if (precomputedMapMatchedPath.length > 0) {
+      return precomputedMapMatchedPath[precomputedMapMatchedPath.length - 1];
+    }
     if (simplifiedPath.length > 0) {
       return simplifiedPath[simplifiedPath.length - 1];
     }
     return originalPath[originalPath.length - 1];
-  }, [mapMatchedPath, originalPath, simplifiedPath]);
+  }, [mapMatchedPath, originalPath, precomputedMapMatchedPath, simplifiedPath]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +226,34 @@ export default function TripMapAmap({
     removeOverlay("matched");
     removeOverlay("matchedPoints");
 
+    removeOverlay("precomputed");
+    removeOverlay("precomputedPoints");
+
+    if (showPrecomputedMapMatched && precomputedMapMatchedPath.length > 1) {
+      overlays.precomputed = new window.AMap!.Polyline({
+        map,
+        path: precomputedMapMatchedPath,
+        strokeColor: "#f97316",
+        strokeOpacity: 0.95,
+        strokeWeight: 3.5,
+        showDir: false,
+      });
+
+      if (showPrecomputedMapMatchedPoints) {
+        overlays.precomputedPoints = precomputedMapMatchedPath.map((coord) => {
+          return new window.AMap!.CircleMarker({
+            map,
+            center: coord,
+            radius: 3.5,
+            strokeColor: "#ffffff",
+            strokeWeight: 1,
+            fillColor: "#f97316",
+            fillOpacity: 1,
+          });
+        });
+      }
+    }
+
     if (showMapMatched && mapMatchedPath.length > 1) {
       overlays.matched = new window.AMap!.Polyline({
         map,
@@ -243,6 +282,7 @@ export default function TripMapAmap({
     const overlaysForFit = [
       overlays.original,
       overlays.simplified,
+      overlays.precomputed,
       overlays.matched,
     ].filter(Boolean);
 
@@ -256,9 +296,12 @@ export default function TripMapAmap({
     originalPath,
     simplifiedPath,
     mapMatchedPath,
+    precomputedMapMatchedPath,
     showOriginal,
     showSimplified,
     showSimplifiedPoints,
+    showPrecomputedMapMatched,
+    showPrecomputedMapMatchedPoints,
     showMapMatched,
     showMapMatchedPoints,
     finishPoint,
