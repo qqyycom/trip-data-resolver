@@ -1,11 +1,10 @@
-const path = require("path")
+const path = require("path");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  outputFileTracingRoot: path.join(__dirname, ".."),
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;
