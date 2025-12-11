@@ -22,7 +22,7 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.544.0",
     "mapbox-gl": "^3.0.1",
-    "next": "^16.0.3",
+    "next": "16.0.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "simplify-js": "^1.2.4",
